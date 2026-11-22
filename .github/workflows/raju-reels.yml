@@ -1,0 +1,104 @@
+name: RAJ Reels Drafts
+
+on:
+  schedule:
+    - cron: "30 7 * * *"   # 12:30 Asia/Kolkata
+    - cron: "30 15 * * *"  # 20:30 Asia/Kolkata
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Daily slot"
+        required: true
+        type: choice
+        options:
+          - midday
+          - evening
+      topic:
+        description: "Optional topic override"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: raju-reels-${{ github.workflow }}-${{ github.ref }}-${{ github.event.schedule || inputs.slot || 'manual' }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout factory configuration
+        uses: actions/checkout@v4
+
+      - name: Select today's topic
+        id: topic
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_SLOT: ${{ inputs.slot }}
+          INPUT_TOPIC: ${{ inputs.topic }}
+        run: python3 scripts/select_topic.py >> "$GITHUB_OUTPUT"
+
+      - name: Checkout video engine
+        uses: actions/checkout@v4
+        with:
+          repository: itsPremkumar/Automated-Video-Generator
+          ref: main
+          path: engine
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install engine dependencies
+        working-directory: engine
+        run: |
+          npm ci
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Generate cinematic vertical Reel draft
+        working-directory: engine
+        env:
+          TOPIC: ${{ steps.topic.outputs.topic }}
+          TITLE: ${{ steps.topic.outputs.title }}
+          AGENTIC_MAX_RUN_MS: "2400000"
+          CI: "true"
+        run: |
+          npm run agentic -- --topic "$TOPIC" --title "$TITLE" --orientation portrait --quality high --preset cinematic --renderer ffmpeg
+
+      - name: Collect generated draft and review files
+        if: always()
+        env:
+          TOPIC: ${{ steps.topic.outputs.topic }}
+          TITLE: ${{ steps.topic.outputs.title }}
+          SLOT: ${{ steps.topic.outputs.slot }}
+        run: |
+          mkdir -p review-output
+          if [ -d engine/workspace/jobs ]; then
+            cp -a engine/workspace/jobs/. review-output/
+          fi
+          printf 'Topic: %s\nTitle: %s\nSlot: %s\n' "$TOPIC" "$TITLE" "$SLOT" > review-output/RUN-INFO.txt
+          find review-output -maxdepth 7 -type f -printf '%p (%s bytes)\n' | sort > review-output/FILES.txt
+          if ! find review-output -type f -name '*.mp4' -size +0c | grep -q .; then
+            echo "No MP4 draft was produced by the engine." > review-output/GENERATION-FAILED.txt
+          fi
+
+      - name: Upload Reel draft for approval
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-draft-${{ steps.topic.outputs.slot || 'manual' }}-${{ github.run_number }}
+          path: review-output/
+          if-no-files-found: warn
+          retention-days: 7
