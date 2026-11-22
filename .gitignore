@@ -1,0 +1,11 @@
+.DS_Store
+*.mp4
+*.mov
+*.mp3
+*.wav
+.env
+.env.*
+engine/
+review-output/
+__pycache__/
+*.pyc
