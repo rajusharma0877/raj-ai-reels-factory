@@ -2,17 +2,15 @@ name: RAJ Reels Drafts
 
 on:
   schedule:
-    - cron: "30 7 * * *"   # 12:30 Asia/Kolkata
-    - cron: "30 15 * * *"  # 20:30 Asia/Kolkata
+    - cron: "30 7 * * *"
+    - cron: "30 15 * * *"
   workflow_dispatch:
     inputs:
       slot:
         description: "Daily slot"
         required: true
         type: choice
-        options:
-          - midday
-          - evening
+        options: [midday, evening]
       topic:
         description: "Optional topic override"
         required: false
@@ -67,15 +65,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Generate cinematic vertical Reel draft
-        working-directory: engine
+      - name: Build tailored English Reel script
         env:
           TOPIC: ${{ steps.topic.outputs.topic }}
           TITLE: ${{ steps.topic.outputs.title }}
-          AGENTIC_MAX_RUN_MS: "2400000"
+        run: python3 scripts/build_input.py
+
+      - name: Generate vertical Reel draft
+        working-directory: engine
+        env:
+          VIDEO_ORIENTATION: portrait
           CI: "true"
-        run: |
-          npm run agentic -- --topic "$TOPIC" --title "$TITLE" --orientation portrait --quality high --preset cinematic --renderer ffmpeg
+        run: npm run generate
 
       - name: Collect generated draft and review files
         if: always()
@@ -85,13 +86,11 @@ jobs:
           SLOT: ${{ steps.topic.outputs.slot }}
         run: |
           mkdir -p review-output
-          if [ -d engine/workspace/jobs ]; then
-            cp -a engine/workspace/jobs/. review-output/
-          fi
+          if [ -d engine/output ]; then cp -a engine/output/. review-output/; fi
           printf 'Topic: %s\nTitle: %s\nSlot: %s\n' "$TOPIC" "$TITLE" "$SLOT" > review-output/RUN-INFO.txt
           find review-output -maxdepth 7 -type f -printf '%p (%s bytes)\n' | sort > review-output/FILES.txt
           if ! find review-output -type f -name '*.mp4' -size +0c | grep -q .; then
-            echo "No MP4 draft was produced by the engine." > review-output/GENERATION-FAILED.txt
+            echo "No MP4 draft was produced. Check the Generate vertical Reel draft step logs." > review-output/GENERATION-FAILED.txt
           fi
 
       - name: Upload Reel draft for approval
