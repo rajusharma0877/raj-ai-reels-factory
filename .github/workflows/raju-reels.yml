@@ -1,6 +1,11 @@
 name: RAJ Reels Drafts
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/raju-reels.yml'
+      - 'scripts/**'
   schedule:
     - cron: "30 7 * * *"
     - cron: "30 15 * * *"
