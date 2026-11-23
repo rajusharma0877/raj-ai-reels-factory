@@ -1,0 +1,102 @@
+name: AI Workspace
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task for Hermes Agent"
+        required: true
+        type: string
+      model:
+        description: "FreeLLMAPI model (auto or exact model ID)"
+        required: false
+        default: "auto"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-workspace
+  cancel-in-progress: false
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout workspace
+        uses: actions/checkout@v4
+
+      - name: Start FreeLLMAPI
+        env:
+          FREEAPI_CONFIG_JSON: ${{ secrets.FREEAPI_CONFIG_JSON }}
+          ENCRYPTION_KEY: ${{ secrets.FREEAPI_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FREEAPI_CONFIG_JSON}" ] || [ -z "${ENCRYPTION_KEY}" ]; then
+            echo "::error::Add FREEAPI_CONFIG_JSON and FREEAPI_ENCRYPTION_KEY under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          docker run -d --name freellmapi \
+            -p 127.0.0.1:3001:3001 \
+            -e NODE_ENV=production \
+            -e PORT=3001 \
+            -e ENCRYPTION_KEY="${ENCRYPTION_KEY}" \
+            -e FREEAPI_CONFIG_JSON="${FREEAPI_CONFIG_JSON}" \
+            -v "${RUNNER_TEMP}/freeapi-data:/app/server/data" \
+            ghcr.io/tashfeenahmed/freellmapi:latest
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3001/api/ping >/dev/null; then
+              echo "FreeLLMAPI is healthy."
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs freellmapi
+          echo "::error::FreeLLMAPI did not become healthy."
+          exit 1
+
+      - name: Install Hermes Agent
+        run: |
+          set -euo pipefail
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/install-hermes.sh
+          bash /tmp/install-hermes.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.hermes/bin" >> "$GITHUB_PATH"
+
+      - name: Run Hermes task
+        env:
+          OPENAI_BASE_URL: http://127.0.0.1:3001/v1
+          OPENAI_API_KEY: ${{ secrets.FREELLMAPI_UNIFIED_KEY }}
+          LLM_MODEL: ${{ inputs.model }}
+          HERMES_TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "::error::Add FREELLMAPI_UNIFIED_KEY (the unified client key from FreeLLMAPI) as a repository secret."
+            exit 1
+          fi
+          if ! command -v hermes >/dev/null 2>&1; then
+            echo "::error::Hermes executable was not found after installation."
+            exit 1
+          fi
+          mkdir -p output
+          hermes --help | head -80
+          echo "Hermes is installed and FreeLLMAPI is reachable."
+          echo "The task runner will be enabled after the Hermes non-interactive CLI invocation is validated."
+          printf '%s\n' "${HERMES_TASK}" > output/task.txt
+          printf 'Model requested: %s\n' "${LLM_MODEL}" > output/status.txt
+
+      - name: Upload run notes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-workspace-run
+          path: output/
+          if-no-files-found: ignore
+
+      - name: Stop FreeLLMAPI
+        if: always()
+        run: docker rm -f freellmapi >/dev/null 2>&1 || true
