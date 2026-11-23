@@ -1,18 +1,27 @@
-# RAJ AI Reels Factory
+# Raj AI Workspace
 
-Instagram-only, faceless Reels draft pipeline for **psychology, heartbreak and long-distance relationships**.
+A zero-budget, on-demand AI workspace powered by GitHub Actions.
 
-## What it does
-- Runs twice daily at **12:30 and 20:30 Asia/Kolkata**.
-- Uses the MIT-licensed [Automated Video Generator](https://github.com/itsPremkumar/Automated-Video-Generator) engine.
-- Creates vertical 9:16 MP4 drafts and supporting review materials.
-- Uploads each run as a GitHub Actions artifact for manual review.
+## Purpose
 
-## Approval and publishing
-**Nothing is published automatically.** Review and approve each MP4 yourself. This repository does not connect to Instagram publishing.
+This repository is the shared runtime for general-purpose AI tasks. YouTube automation is one project, not the only purpose.
 
-## Run manually
-Open **Actions → RAJ Reels Drafts → Run workflow**. Choose a slot and optionally provide a topic override.
+Planned components:
+- **Hermes Agent** — task orchestration and tool use.
+- **FreeLLMAPI** — model/API gateway used by Hermes.
+- **GitHub Actions** — temporary runner that starts the services for a requested task and shuts down when the job ends.
 
-## Cost and limitations
-The workflow uses GitHub-hosted runners and upstream free media/voice sources where available. Public-repository runner usage is subject to GitHub's current Actions policies and availability. External media providers can change availability or rate limits.
+## Important runtime behavior
+
+This is **on-demand**, not 24/7 hosting. Services exist only while a GitHub Actions job is running. Start a run from the Actions tab or via a configured schedule. When the job ends, the runner and its processes are discarded.
+
+## Security
+
+- Never commit API keys, tokens, passwords, or personal data.
+- Add credentials only as GitHub Actions repository secrets.
+- Keep generated media and large temporary files out of Git history.
+- Review third-party actions and container images before use.
+
+## Status
+
+Initial repository reset completed. The reusable runner, FreeLLMAPI service startup, Hermes setup, and task entry points are being added in stages. No credentials are stored in this repository yet.
