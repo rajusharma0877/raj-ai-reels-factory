@@ -1,0 +1,24 @@
+channels:
+  hindi:
+    language: Hindi
+    audience: India
+    target_duration_minutes: 12
+    aspect_ratio: "16:9"
+    narration_style: conversational documentary Hindi
+    metadata_language: Hindi
+  english:
+    language: English
+    audience: International
+    target_duration_minutes: 12
+    aspect_ratio: "16:9"
+    narration_style: engaging historical documentary English
+    metadata_language: English
+
+editorial:
+  initial_topic_area: Ancient Rome everyday life
+  perspective: ordinary people
+  duration_range_minutes: [10, 15]
+  originality: required
+  source_notes_required: true
+  disputed_claims_must_be_flagged: true
+  auto_publish: false
