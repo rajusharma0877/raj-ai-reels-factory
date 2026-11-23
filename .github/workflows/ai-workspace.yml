@@ -8,9 +8,9 @@ on:
         required: true
         type: string
       model:
-        description: "FreeLLMAPI model (auto or exact model ID)"
+        description: "Optional exact FreeLLMAPI model ID; leave blank for catalog default"
         required: false
-        default: "auto"
+        default: ""
         type: string
 
 permissions:
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${FREEAPI_CONFIG_JSON}" ] || [ -z "${ENCRYPTION_KEY}" ]; then
-            echo "::error::Missing FREEAPI_CONFIG_JSON or FREEAPI_ENCRYPTION_KEY repository secret. See SETUP.md."
+            echo "::error::Missing FREEAPI_CONFIG_JSON or FREEAPI_ENCRYPTION_KEY. Follow SETUP.md."
             exit 1
           fi
           docker run -d --name freellmapi \
@@ -62,40 +62,35 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/install-hermes.sh
-          bash /tmp/install-hermes.sh
+          bash /tmp/install-hermes.sh --skip-setup
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.hermes/bin" >> "$GITHUB_PATH"
 
-      - name: Configure Hermes and run task
+      - name: Configure Hermes for FreeLLMAPI
         env:
           FREELLMAPI_UNIFIED_KEY: ${{ secrets.FREELLMAPI_UNIFIED_KEY }}
-          HERMES_TASK: ${{ inputs.task }}
           HERMES_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
           if [ -z "${FREELLMAPI_UNIFIED_KEY}" ]; then
-            echo "::error::Missing FREELLMAPI_UNIFIED_KEY repository secret. See SETUP.md."
+            echo "::error::Missing FREELLMAPI_UNIFIED_KEY. Follow SETUP.md."
             exit 1
           fi
-          mkdir -p "$HOME/.hermes" output
-          cat > "$HOME/.hermes/config.yaml" <<'YAML'
-          model:
-            default: auto
-            provider: custom
-            base_url: http://127.0.0.1:3001/v1
-            api_key: ${FREELLMAPI_UNIFIED_KEY}
-          YAML
-          printf 'FREELLMAPI_UNIFIED_KEY=%s\n' "$FREELLMAPI_UNIFIED_KEY" > "$HOME/.hermes/.env"
-          chmod 600 "$HOME/.hermes/.env"
-
-          # Select the requested router model for this run.
-          if [ -n "${HERMES_MODEL}" ] && [ "${HERMES_MODEL}" != "auto" ]; then
-            sed -i "s/default: auto/default: ${HERMES_MODEL}/" "$HOME/.hermes/config.yaml"
+          if [ -n "${HERMES_MODEL}" ]; then
+            npx --yes freellmapi setup-hermes --url http://127.0.0.1:3001 --api-key "${FREELLMAPI_UNIFIED_KEY}" --model "${HERMES_MODEL}"
+          else
+            npx --yes freellmapi setup-hermes --url http://127.0.0.1:3001 --api-key "${FREELLMAPI_UNIFIED_KEY}"
           fi
 
+      - name: Run Hermes task
+        env:
+          HERMES_TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          mkdir -p output
           hermes doctor
           set -o pipefail
-          hermes chat -q "$HERMES_TASK" 2>&1 | tee output/hermes-run.log
+          hermes -z "${HERMES_TASK}" 2>&1 | tee output/hermes-run.log
 
       - name: Upload task output
         if: always()
